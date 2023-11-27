@@ -372,7 +372,7 @@ renderCUDA(
 			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
 	}
 }
-
+//aa
 void FORWARD::render(
 	const dim3 grid, dim3 block,
 	const uint2* ranges,
