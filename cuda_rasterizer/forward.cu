@@ -140,6 +140,8 @@ __device__ void computeCov3D(const glm::vec3 scale, float mod, const glm::vec4 r
 	glm::mat3 M = S * R;
 
 	// Compute 3D world covariance matrix Sigma
+	// R^TS^TSR to transform from a standard 3D gaussian
+	// including, rotate first, scale on rotated axis, rotate back to world coord
 	glm::mat3 Sigma = glm::transpose(M) * M;
 
 	// Covariance is symmetric, only store upper right
@@ -179,6 +181,8 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	uint32_t* tiles_touched,
 	bool prefiltered)
 {
+	// Get thread idx directly without manual calculation using cg lib
+	// HERE the idx means the index of 3D GS, not the pixel!
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P)
 		return;
@@ -190,6 +194,8 @@ __global__ void preprocessCUDA(int P, int D, int M,
 
 	// Perform near culling, quit if outside.
 	float3 p_view;
+	// p_view is projected from orig_points using viewmatrix
+
 	if (!in_frustum(idx, orig_points, viewmatrix, projmatrix, prefiltered, p_view))
 		return;
 
@@ -197,6 +203,8 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
 	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
 	float p_w = 1.0f / (p_hom.w + 0.0000001f);
+	// As done in in_frustum, here the p_proj means the NDC coordinates (using focal length + z + near)
+	// for clip space, w is not divided yet. So here, it is NDC space, where [-1, 1] means inside camera frustum
 	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
 
 	// If 3D covariance matrix is precomputed, use it, otherwise compute
@@ -208,11 +216,17 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	}
 	else
 	{
+		// Cov3D (eq. 6) = RS(S^T)(R^T)
+		// here con3D only store the upper right part of the matrix, including the variance of X, Y, Z and the covariance of XY, XZ, YZ
 		computeCov3D(scales[idx], scale_modifier, rotations[idx], cov3Ds + idx * 6);
+		// update the pointer to the start of current cov3D
 		cov3D = cov3Ds + idx * 6;
 	}
 
 	// Compute 2D screen-space covariance matrix
+	// eq.5 in paper. Project 3D GS to 2D image coordinate with w2c matrix and focal length.
+	// here cov is a 3-vector, in the order of var of X, CoV(X, Y), and var of Y
+	// Here the p_orig is the center or mean of 3D GS
 	float3 cov = computeCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
 
 	// Invert covariance (EWA algorithm)
@@ -226,13 +240,33 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	// 2D covariance matrix). Use extent to compute a bounding rectangle
 	// of screen-space tiles that this Gaussian overlaps with. Quit if
 	// rectangle covers 0 tiles. 
+
+	// average the variance of X and Z
 	float mid = 0.5f * (cov.x + cov.z);
+	// two eigenvalues of the CoV2D matrix (square of radius on each significant axis (the 2D gaussian ellipsoid can be seen as scaled first and stretched along the eigenvectors.)
+	// so the sqrt of eigenvalues can be seen as the long axis radius and short axis radius
+	// here find the long axis radius (long axis's std)
 	float lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
 	float lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
+	// the gaussian itself actually have unlimited range
+	// but to compute the tiles that have its influence, here simply define a circle with 3 * std of longer axis (for further range, the gaussian only have minor values that can be ignored) 
 	float my_radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
+	// use only x and y to transform ndc coord to image coord.
+	// the ndc coord actually already correspond to "camera coordinate", as it represents the frustum of the camera
+	// so it should be easy to convert from ndc to image coord.
+	// here the convert range from [-1, 1] becomes [-0.5, W-0.5] or [-0.5, H-0.5]
+	// for example, for a image with 3x3 pixels, the general center is [2, 2] (center defined on right-bottom of center pixel)
+	// however, here define it as [1.5, 1.5]. so the left-most coord is 1.5-2, right-most coord is 1.5 + 1 
+
+	// here basically means the center of 3D gaussian that is projected onto the image coord
 	float2 point_image = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) };
 	uint2 rect_min, rect_max;
+	// here grid defines the idx of blocks
+	// for example, an image is 160x160, with block size 16x16, so the grid would be 10x10
+	// get the minimal rectangle that can covers the whole circle
+	// but actually return the tile index here (left top point's corresponding tile's x and y idx, and right bottom as well)
 	getRect(point_image, my_radius, rect_min, rect_max, grid);
+	// if this 3D GS is not influencing any pixels of the image plane (or screen space that is limited by H and W)
 	if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
 		return;
 
@@ -240,6 +274,9 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	// spherical harmonics coefficients to RGB color.
 	if (colors_precomp == nullptr)
 	{
+		// here the idx means the index of 3D GS, not pixel
+		// So here basically computes the color of current 3D GS based on the Spherical Harmonics
+		// And each 3D GS has a unique color for different view direction
 		glm::vec3 result = computeColorFromSH(idx, D, M, (glm::vec3*)orig_points, *cam_pos, shs, clamped);
 		rgb[idx * C + 0] = result.x;
 		rgb[idx * C + 1] = result.y;
@@ -249,16 +286,22 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	// Store some useful helper data for the next steps.
 	depths[idx] = p_view.z;
 	radii[idx] = my_radius;
+	// Store the gaussian center on image coordinate for current gaussian with index idx 
+	// (if this 3D GS is ignored and return before here, it would be nullptr)
 	points_xy_image[idx] = point_image;
 	// Inverse 2D covariance and opacity neatly pack into one float4
 	conic_opacity[idx] = { conic.x, conic.y, conic.z, opacities[idx] };
+	// calculate the number of tiles that is been touched by current 3D GS
 	tiles_touched[idx] = (rect_max.y - rect_min.y) * (rect_max.x - rect_min.x);
 }
 
 // Main rasterization method. Collaboratively works on one tile per
 // block, each thread treats one pixel. Alternates between fetching 
 // and rasterizing data.
+// CHANNELS is a uint32_t number, so this function can be compiled to different channel numbers
+// Not use as input parameter here, because compiler will know the channel number in advance for better optimization
 template <uint32_t CHANNELS>
+// tell compiler the block size for optimization
 __global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
 renderCUDA(
 	const uint2* __restrict__ ranges,
@@ -273,12 +316,20 @@ renderCUDA(
 	float* __restrict__ out_color)
 {
 	// Identify current tile and associated min/max pixel range.
+	// get block index for current thread (pixel)
 	auto block = cg::this_thread_block();
+	// horizontal block numbers
 	uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X;
+	// the global pixel coordinates of current blocks' left top pixel
 	uint2 pix_min = { block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y };
+	// the global pixel coordinates of current blocks' right bottom pixel
 	uint2 pix_max = { min(pix_min.x + BLOCK_X, W), min(pix_min.y + BLOCK_Y , H) };
+	// the global pixel coordinates of current pixel in current block
+	// thread_index() return a 2D thread index (y, x)
 	uint2 pix = { pix_min.x + block.thread_index().x, pix_min.y + block.thread_index().y };
+	// the global index of current pixel
 	uint32_t pix_id = W * pix.y + pix.x;
+	// into float global coordinate for current pixel
 	float2 pixf = { (float)pix.x, (float)pix.y };
 
 	// Check if this thread is associated with a valid pixel or outside.
@@ -287,35 +338,65 @@ renderCUDA(
 	bool done = !inside;
 
 	// Load start/end range of IDs to process in bit sorted list.
+	// group_index() here return the 2D block index (y, x)
+
+	// notice here the 3DGS are sorted by key of [tile_idx | 3D GS depth]
+	// so for current block (tile), we can easily find the ranges of 3DGS indexes that need to be considered within this block (tile) 
+
+	// find the range for current block 
+	// (blocks are placed from left to right, from top to bottom, in a flatten style)
+	// so needs to calculate the block index here
 	uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x];
+	// y and x here means the left bound and right bound
+	// BLOCK size here is 16*16. For each iteration, it iterates 16*16 times (a batch is 16*16)
+	// here is to limit the number to be processed in parallel
 	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
+	// left number of index to be processed
 	int toDo = range.y - range.x;
 
 	// Allocate storage for batches of collectively fetched data.
+	// the data here is shared by the whole block with fast access
 	__shared__ int collected_id[BLOCK_SIZE];
 	__shared__ float2 collected_xy[BLOCK_SIZE];
 	__shared__ float4 collected_conic_opacity[BLOCK_SIZE];
 
 	// Initialize helper variables
+	// accumulated transmittance for current pixel
 	float T = 1.0f;
+
 	uint32_t contributor = 0;
 	uint32_t last_contributor = 0;
+	// accumulated color for current pixel
 	float C[CHANNELS] = { 0 };
 
 	// Iterate over batches until all done or range is complete
+	// here each thread (pixel) will go over this iteration. this iteration is to iterate over 3D gaussians (3D gaussians are divided into batches)
+	// each pixel should iterate over all 3D GS for this tile. But not using a single loop, but a two-layer loop.
+	// remember the cuda process here is written for one thread
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
 	{
 		// End if entire block votes that it is done rasterizing
+		// __syncthreads_count here stop every threads in a block here
+		// and count how many reached threads (pixels) shows "done"
 		int num_done = __syncthreads_count(done);
 		if (num_done == BLOCK_SIZE)
 			break;
 
 		// Collectively fetch per-Gaussian data from global to shared
+		// thread_rank() returns the flat index of current thread inside the block
+		// though one pixel needs to iterate over all 3D GS, but for shared memory usage, this is not necessary
+		// batch split is the same for all threads. each thread only take care of loading the "point list"
+		// here is why the batch is 16*16: each thread loads one point into the shared memory, with 16*16 threads, each time 16*16 points can be loaded in parallel into the shared memory
+		// also, shared memory has limited size. for current batch, only load the data for current batch
 		int progress = i * BLOCK_SIZE + block.thread_rank();
 		if (range.x + progress < range.y)
 		{
+			// load a batch (16*16) of points (3D GS index and center coords) into the shared memory
+			// and progress make it possible for all thread to each item of data in the batch into the shared memory in parallel
 			int coll_id = point_list[range.x + progress];
+			// the 3D GS index
 			collected_id[block.thread_rank()] = coll_id;
+			// the 3D GS
 			collected_xy[block.thread_rank()] = points_xy_image[coll_id];
 			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id];
 		}
@@ -372,7 +453,7 @@ renderCUDA(
 			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
 	}
 }
-//aa
+
 void FORWARD::render(
 	const dim3 grid, dim3 block,
 	const uint2* ranges,
