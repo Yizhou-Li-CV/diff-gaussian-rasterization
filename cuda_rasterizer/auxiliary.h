@@ -46,15 +46,22 @@ __forceinline__ __device__ float ndc2Pix(float v, int S)
 __forceinline__ __device__ void getRect(const float2 p, int max_radius, uint2& rect_min, uint2& rect_max, dim3 grid)
 {
 	rect_min = {
+		// here grid defines the idx of blocks
+		// for example, an image is 160x160, with block size 16x16, so the grid would be 10x10
+		// BLOCK_X and BLOCK_Y defines the block size (or tile size, 16x16 here)
+		// Find the corresponding block idx of left-top point by (x-r, y-r) for X (height) and Y (width) dimension
 		min(grid.x, max((int)0, (int)((p.x - max_radius) / BLOCK_X))),
 		min(grid.y, max((int)0, (int)((p.y - max_radius) / BLOCK_Y)))
 	};
 	rect_max = {
+		// Find the corresponding block idx of right-bottom point by (x-r, y-r) for X (height) and Y (width) dimension
 		min(grid.x, max((int)0, (int)((p.x + max_radius + BLOCK_X - 1) / BLOCK_X))),
 		min(grid.y, max((int)0, (int)((p.y + max_radius + BLOCK_Y - 1) / BLOCK_Y)))
 	};
+	// In summary, here a minimal rectangle that can covers the whole circle is defined
 }
 
+// rotation + translation (or scaling, perspective transformations, etc.)
 __forceinline__ __device__ float3 transformPoint4x3(const float3& p, const float* matrix)
 {
 	float3 transformed = {
@@ -65,6 +72,7 @@ __forceinline__ __device__ float3 transformPoint4x3(const float3& p, const float
 	return transformed;
 }
 
+// rotation + translation (or scaling, perspective transformations, etc.)
 __forceinline__ __device__ float4 transformPoint4x4(const float3& p, const float* matrix)
 {
 	float4 transformed = {
@@ -76,6 +84,7 @@ __forceinline__ __device__ float4 transformPoint4x4(const float3& p, const float
 	return transformed;
 }
 
+// pure rotation (or scaling, perspective transformations, etc.)
 __forceinline__ __device__ float3 transformVec4x3(const float3& p, const float* matrix)
 {
 	float3 transformed = {
@@ -146,11 +155,20 @@ __forceinline__ __device__ bool in_frustum(int idx,
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
 
 	// Bring points to screen space
+	// Here, it may bring 3D points to NDC space (scale each axis with focal length and image width/height and near plane)
 	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
+	// Divide each axis with w (or the depth z)
 	float p_w = 1.0f / (p_hom.w + 0.0000001f);
+	// NDC coordinates, can easily find if a point inside camera frustum within [-1, 1]
 	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
-	p_view = transformPoint4x3(p_orig, viewmatrix);
 
+	// notice p_view is transformed from p_orig, not p_proj
+	// here viewmatrix should include w2c matrix (rotation + translation)
+	p_view = transformPoint4x3(p_orig, viewmatrix);
+	
+	// filter near points here? but cam coord is usually x, y, -z
+	// meaning point in front of camera should have negative z
+	// maybe here the w2c is made such that the resultant camera coord follows x, y, z
 	if (p_view.z <= 0.2f)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
 	{
 		if (prefiltered)
