@@ -378,6 +378,9 @@ renderCUDA(
 		// End if entire block votes that it is done rasterizing
 		// __syncthreads_count here stop every threads in a block here
 		// and count how many reached threads (pixels) shows "done"
+
+		// if not all done for current batch, still require all threads to help load data into the shared memory
+		// (even though done threads won't go into next iteration)
 		int num_done = __syncthreads_count(done);
 		if (num_done == BLOCK_SIZE)
 			break;
@@ -396,13 +399,15 @@ renderCUDA(
 			int coll_id = point_list[range.x + progress];
 			// the 3D GS index
 			collected_id[block.thread_rank()] = coll_id;
-			// the 3D GS
+			// the 3D GS center coord in image coordinate
 			collected_xy[block.thread_rank()] = points_xy_image[coll_id];
 			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id];
 		}
+		// wait until all threads finish loading
 		block.sync();
 
-		// Iterate over current batch
+		// Iterate over all 3D gaussians in this batch
+		// because data about a batch of 3D GS is loaded into the shared memory, the query would be very fast
 		for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
 		{
 			// Keep track of current position in range
@@ -411,8 +416,10 @@ renderCUDA(
 			// Resample using conic matrix (cf. "Surface 
 			// Splatting" by Zwicker et al., 2001)
 			float2 xy = collected_xy[j];
+			// x_dist and y_dist from current pixel to current 3D GS center
 			float2 d = { xy.x - pixf.x, xy.y - pixf.y };
 			float4 con_o = collected_conic_opacity[j];
+			// the influence level of the current 3D GS to current pixel, should be negative for opacity exp(-x) = 1 - alpha
 			float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
 			if (power > 0.0f)
 				continue;
@@ -420,25 +427,36 @@ renderCUDA(
 			// Eq. (2) from 3D Gaussian splatting paper.
 			// Obtain alpha by multiplying with Gaussian opacity
 			// and its exponential falloff from mean.
-			// Avoid numerical instabilities (see paper appendix). 
+			// Avoid numerical instabilities (see paper appendix).
+
+			// alpha (influence of current 3D gaussian to current pixel)
 			float alpha = min(0.99f, con_o.w * exp(power));
+			// if alpha is minor, we can ignore and continue to next GS
 			if (alpha < 1.0f / 255.0f)
 				continue;
+			// T = T * (1 - alpha)
 			float test_T = T * (1 - alpha);
+			// early stop if accumulated transmittance is too small (already high opacity from front to current layer)
 			if (test_T < 0.0001f)
 			{
+				// continue but quit the iteration here
+				// later batch also not needed to be considered
 				done = true;
 				continue;
 			}
 
 			// Eq. (3) from 3D Gaussian splatting paper.
 			for (int ch = 0; ch < CHANNELS; ch++)
+				// color += c * alpha * T (similar to NeRF, just alpha blending from front to back)
+				// features here store the color for each channel of this gaussian (pointed by collected_id[j])
 				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
 
 			T = test_T;
 
 			// Keep track of last range entry to update this
 			// pixel.
+
+			// basically just stores the number of 3D GS influencing cur pixel that not ignored during splatting
 			last_contributor = contributor;
 		}
 	}
@@ -447,9 +465,12 @@ renderCUDA(
 	// rendering data to the frame and auxiliary buffers.
 	if (inside)
 	{
+		// the accumulated transmittance for current pixel (can be used to scale the splatted results?)
 		final_T[pix_id] = T;
 		n_contrib[pix_id] = last_contributor;
 		for (int ch = 0; ch < CHANNELS; ch++)
+			// add to global buffer for final output. Here the left T will be used to add a bg_color (possibly the sky color)
+			// or for dof splatting, we can use T to scale the final color to make the rendering results look more natural
 			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
 	}
 }
