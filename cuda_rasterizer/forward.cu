@@ -181,7 +181,7 @@ __global__ void preprocessCUDA(
 	float* cov3Ds, // Output. 1-D array but store 6 numbers (3 vars and 3 covs) for 3D Gaussian covariance
 	float* rgb, // Output. 1-D array to store 3 numbers (rgb with SH) of 3D GS to current camera
 	float4* conic_opacity, // Output. About EWA
-	const dim3 grid, // Input. Grid size. Suppose res is 160x160, block size is 16x16, so the grid.x=grid.y=10. since grid idx start from 0, the right bottom corner idx is (grid.x-1, grid.y-1).
+	const dim3 grid, // Input. Grid size. Suppose res is 160x160, block size is 16x16, so the grid.x=grid.y=10. since grid idx start from 0, the right bottom grid idx is (grid.x-1, grid.y-1).
 	uint32_t* tiles_touched, // Output. 1-D array of the number of tiles that have been touched by 3D GS
 	bool prefiltered // Input. if camera is filtered? because it is a single boolean.
 	)
