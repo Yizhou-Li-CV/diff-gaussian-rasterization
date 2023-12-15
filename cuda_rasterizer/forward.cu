@@ -154,32 +154,37 @@ __device__ void computeCov3D(const glm::vec3 scale, float mod, const glm::vec4 r
 }
 
 // Perform initial steps for each Gaussian prior to rasterization.
+// As viewmat and projmat is shared, this is for preparing 3D GS parameters for one camera only.
 template<int C>
-__global__ void preprocessCUDA(int P, int D, int M,
-	const float* orig_points,
-	const glm::vec3* scales,
-	const float scale_modifier,
-	const glm::vec4* rotations,
-	const float* opacities,
-	const float* shs,
-	bool* clamped,
-	const float* cov3D_precomp,
-	const float* colors_precomp,
-	const float* viewmatrix,
-	const float* projmatrix,
-	const glm::vec3* cam_pos,
-	const int W, int H,
-	const float tan_fovx, float tan_fovy,
-	const float focal_x, float focal_y,
-	int* radii,
-	float2* points_xy_image,
-	float* depths,
-	float* cov3Ds,
-	float* rgb,
-	float4* conic_opacity,
-	const dim3 grid,
-	uint32_t* tiles_touched,
-	bool prefiltered)
+__global__ void preprocessCUDA(
+	int P, // Input. the maximum number of 3D GS?
+	int D, // Input. the degree (complexity?) of spherical harmonics
+	int M, // Input. the max_coeffs for spherical harmonics
+	const float* orig_points, // Input. 1-D array, every 3 element store a coordinate of point (center of 3D GS) 
+	const glm::vec3* scales, // Input. 1-D array storing vec3, the scales of 3D GS for 3 axis
+	const float scale_modifier, // Input. a constant to change the overall scale of 3D GS
+	const glm::vec4* rotations, // Input. 1-D array storing vec4, the q4 vector expressing the rotation 
+	const float* opacities, // Input. about 3D-to-2D GS projection (EWA)
+	const float* shs, // Input. about spherical harmonics (will be converted to vec3* and get the 3 parameters of SH)
+	bool* clamped, // Output. 1-D array storing RGB color. Store the bool of if RGB value is clamped (should be positive) or not for backward
+	const float* cov3D_precomp, // Input. if 3D cov matrix is precomputed, can be used, otherwise (nullptr) would be recomputed
+	const float* colors_precomp, // Input. similar. precomputed color
+	const float* viewmatrix, // Input. w2c matrix (rotation + translation)
+	const float* projmatrix, // Input. used to project point to camera's clip space (later converted to NDC space)
+	const glm::vec3* cam_pos, // Input. 1-D array storting vec3. camera location
+	const int W, int H, // Input. 
+	const float tan_fovx, float tan_fovy, // Input. 
+	const float focal_x, float focal_y, // Input. camera intrinsics for computing cov2D from cov3D
+	int* radii, // Output. store radius of projected 2D gaussian (3xstd, ceil(3.f * sqrt(max(lambda1, lambda2))))
+	float2* points_xy_image, // Output. 1-D array of 2floats. used to store projected center of 3D GS
+	float* depths, // Output. 1-D array of 1 float. used to store the depth of 3D GS for current camera
+	float* cov3Ds, // Output. 1-D array but store 6 numbers (3 vars and 3 covs) for 3D Gaussian covariance
+	float* rgb, // Output. 1-D array to store 3 numbers (rgb with SH) of 3D GS to current camera
+	float4* conic_opacity, // Output. About EWA
+	const dim3 grid, // Input. Grid size. Suppose res is 160x160, block size is 16x16, so the grid.x=grid.y=10. since grid idx start from 0, the right bottom corner idx is (grid.x-1, grid.y-1).
+	uint32_t* tiles_touched, // Output. 1-D array of the number of tiles that have been touched by 3D GS
+	bool prefiltered // Input. if camera is filtered? because it is a single boolean.
+	)
 {
 	// Get thread idx directly without manual calculation using cg lib
 	// HERE the idx means the index of 3D GS, not the pixel!
