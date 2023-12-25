@@ -309,16 +309,17 @@ template <uint32_t CHANNELS>
 // tell compiler the block size for optimization
 __global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
 renderCUDA(
-	const uint2* __restrict__ ranges,
-	const uint32_t* __restrict__ point_list,
-	int W, int H,
-	const float2* __restrict__ points_xy_image,
-	const float* __restrict__ features,
-	const float4* __restrict__ conic_opacity,
-	float* __restrict__ final_T,
-	uint32_t* __restrict__ n_contrib,
-	const float* __restrict__ bg_color,
-	float* __restrict__ out_color)
+	const uint2* __restrict__ ranges, // Input. store 3D GS idx range for each block.
+	const uint32_t* __restrict__ point_list, // Input. store [tile_idx | depth] for each 3D GS (queried by idx above)
+	int W, int H, // Input
+	const float2* __restrict__ points_xy_image, // Input. store 3D GS projected 2D coordinate (queried by [tile_idx | depth])
+	const float* __restrict__ features,	// Input. features here store the color for each channel of this gaussian (pointed by collected_id[j])
+	const float4* __restrict__ conic_opacity, // Input. About 3D to 2D GS projection
+	float* __restrict__ final_T, // Output. final accumulated T for each pixel (thread)
+	uint32_t* __restrict__ n_contrib, // Output. basically just stores the number of 3D GS influencing cur pixel that not ignored during splatting
+	const float* __restrict__ bg_color, // Input. the RGB color of background. used when T is not small.
+	float* __restrict__ out_color // Output. store the RGB color (so 3 numbers) of current pixel
+	)
 {
 	// Identify current tile and associated min/max pixel range.
 	// get block index for current thread (pixel)
