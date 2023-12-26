@@ -21,31 +21,13 @@
 namespace FORWARD
 {
 	// Perform initial steps for each Gaussian prior to rasterization.
-	void preprocess(int P, int D, int M,
-		const float* orig_points,
-		const glm::vec3* scales,
-		const float scale_modifier,
-		const glm::vec4* rotations,
-		const float* opacities,
-		const float* shs,
-		bool* clamped,
-		const float* cov3D_precomp,
-		const float* colors_precomp,
-		const float* viewmatrix,
-		const float* projmatrix,
-		const glm::vec3* cam_pos,
+	void preprocess(int P,
+		const float2* orig_points,
 		const int W, int H,
-		const float focal_x, float focal_y,
-		const float tan_fovx, float tan_fovy,
-		int* radii,
-		float2* points_xy_image,
-		float* depths,
-		float* cov3Ds,
-		float* colors,
-		float4* conic_opacity,
+		const int* radii,
 		const dim3 grid,
-		uint32_t* tiles_touched,
-		bool prefiltered);
+		uint32_t* tiles_touched
+	);
 
 	// Main rasterization method.
 	void render(

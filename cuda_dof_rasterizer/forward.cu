@@ -250,6 +250,33 @@ renderCUDA(
 		for (int ch = 0; ch < CHANNELS; ch++)
 			// add to global buffer for final output. Here the left T will be used to add a bg_color (possibly the sky color)
 			// or for dof splatting, we can use T to scale the final color to make the rendering results look more natural
-			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
+			out_color[ch * H * W + pix_id] = C[ch] / T;
 	}
+}
+
+void FORWARD::render(
+	const dim3 grid, dim3 block,
+	const uint2* __restrict__ ranges,
+	const uint32_t* __restrict__ point_list,
+	int W, int H,
+	const float2* __restrict__ points_xy_image,
+	const float* __restrict__ colors,
+	float* __restrict__ final_T,
+	uint32_t* __restrict__ n_contrib,
+	const float* __restrict__ bg_color,
+	float* __restrict__ out_color
+	const int* radii // Input. the radius of each kernel (should be replicated during sorting)
+)
+{
+	renderCUDA<NUM_CHANNELS> << <grid, block >> > (
+		ranges,
+		point_list,
+		W, H,
+		points_xy_image,
+		colors,
+		final_T,
+		n_contrib,
+		bg_color,
+		out_color,
+		radii);
 }
