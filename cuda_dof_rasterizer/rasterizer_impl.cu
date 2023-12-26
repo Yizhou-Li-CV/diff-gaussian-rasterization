@@ -102,6 +102,8 @@ __global__ void duplicateWithKeys(
 				key |= *((uint32_t*)&depths[idx]);
 				gaussian_keys_unsorted[off] = key;
 				// duplicate the GS indexes for each tile
+				// this is the key things to use
+				// the [tile idx | depth] are only used for sorting
 				// then sorted with tile id | depth
 				gaussian_values_unsorted[off] = idx;
 				off++;
@@ -115,7 +117,7 @@ __global__ void duplicateWithKeys(
 // Run once per instanced (duplicated) Gaussian ID.
 __global__ void identifyTileRanges(int L, uint64_t* point_list_keys, uint2* ranges)
 {
-	// this seems the duplicated 3D GS index
+	// this means the 3D GS index (idx are based on gaussians after duplication)
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= L)
 		return;
@@ -129,6 +131,7 @@ __global__ void identifyTileRanges(int L, uint64_t* point_list_keys, uint2* rang
 	else
 	{
 		uint32_t prevtile = point_list_keys[idx - 1] >> 32;
+		// if go to next tile, meaning this is the start of next new tile, or the end of last tile.
 		if (currtile != prevtile)
 		{
 			ranges[prevtile].y = idx;
