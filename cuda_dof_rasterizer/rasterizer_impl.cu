@@ -115,12 +115,14 @@ __global__ void duplicateWithKeys(
 // Run once per instanced (duplicated) Gaussian ID.
 __global__ void identifyTileRanges(int L, uint64_t* point_list_keys, uint2* ranges)
 {
+	// this seems the duplicated 3D GS index
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= L)
 		return;
 
 	// Read tile ID from key. Update start/end of tile range if at limit.
 	uint64_t key = point_list_keys[idx];
+	// current tile index of duplicated 3D GS
 	uint32_t currtile = key >> 32;
 	if (idx == 0)
 		ranges[currtile].x = 0;
