@@ -69,6 +69,9 @@ __global__ void duplicateWithKeys(
 	if (radii[idx] > 0)
 	{
 		// Find this Gaussian's offset in buffer for writing keys/values.
+		// the offset is precomputed by the number of blocks that is covered by the 3D GS
+		// so each 3D GS is duplicated by number of covered blocks by it
+		// offset just consider previous 3D GS's duplicate times
 		uint32_t off = (idx == 0) ? 0 : offsets[idx - 1];
 		uint2 rect_min, rect_max;
 
