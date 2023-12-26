@@ -74,7 +74,7 @@ template <uint32_t CHANNELS>
 // tell compiler the block size for optimization
 __global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
 renderCUDA(
-	const uint2* __restrict__ ranges, // Input. store 3D GS idx range (after duplication and sorting) for each block.
+	const uint2* __restrict__ ranges, // Input. store 3D GS range (after duplication and sorting) for each block. Done in identifyTileRanges.
 	const uint32_t* __restrict__ point_list, // Input. store actual 3D GS index (actual idx before duplication). query the true 3D GS index for current tile with range.
 	int W, int H, // Input
 	const float2* __restrict__ points_xy_image, // Input. store 3D GS projected 2D coordinate (queried by [tile_idx | depth])
