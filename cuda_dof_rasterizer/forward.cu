@@ -83,6 +83,7 @@ renderCUDA(
 	uint32_t* __restrict__ n_contrib, // Output. basically just stores the number of 3D GS influencing cur pixel that not ignored during splatting
 	const float* __restrict__ bg_color, // Input. the RGB color of background. used when T is not small.
 	float* __restrict__ out_color // Output. store the RGB color (so 3 numbers) of current pixel
+	// should this be __restrict__?
 	const int* radii // Input. the radius of each kernel (should be replicated during sorting)
 ){
 	// Identify current tile and associated min/max pixel range.

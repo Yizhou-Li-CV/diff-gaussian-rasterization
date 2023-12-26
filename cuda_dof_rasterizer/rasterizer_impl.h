@@ -19,7 +19,7 @@
 namespace CudaRasterizer
 {
 	template <typename T>
-	// *&: A reference to a pointer
+	// *&: A reference to a pointer (allow to change pointer itself. if only *, can only change the part been pointed)
 	// alignment: The alignment boundary. 
 	// The function will ensure the memory address is a multiple of this value.
 	static void obtain(char*& chunk, T*& ptr, std::size_t count, std::size_t alignment)
@@ -29,6 +29,8 @@ namespace CudaRasterizer
 		// The bitwise AND with ~(alignment - 1) zeroes out the lower bits to ensure proper alignment.
 		std::size_t offset = (reinterpret_cast<std::uintptr_t>(chunk) + alignment - 1) & ~(alignment - 1);
 		ptr = reinterpret_cast<T*>(offset);
+		// update the chunk, s.t. it points at the start of next chunk
+		// Consider this chunk of memory as a different type, but don't change the memory itself.
 		chunk = reinterpret_cast<char*>(ptr + count);
 	}
 
