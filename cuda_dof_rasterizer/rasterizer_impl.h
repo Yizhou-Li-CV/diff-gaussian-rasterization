@@ -22,6 +22,7 @@ namespace CudaRasterizer
 	// *&: A reference to a pointer (allow to change pointer itself. if only *, can only change the part been pointed)
 	// alignment: The alignment boundary. 
 	// The function will ensure the memory address is a multiple of this value.
+	// T will be defined by the actually inputted type
 	static void obtain(char*& chunk, T*& ptr, std::size_t count, std::size_t alignment)
 	{
 		// calculates an aligned memory address

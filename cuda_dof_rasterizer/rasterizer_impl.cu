@@ -177,15 +177,28 @@ CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char*& ch
 {
 	GeometryState geom;
 	// obtain(char*& chunk, T*& ptr, std::size_t count, std::size_t alignment)
-	// P means the max number of 3D GS
+	// P means the max number of 3D GS. 
+	// 128 means current pointer should be start at a address that can be divided by 128
+	// geom.depths will point to the start of the new address that can be divided by 128
+	// chunk will be updated to geom.depths + P
 	obtain(chunk, geom.depths, P, 128);
-	obtain(chunk, geom.clamped, P * 3, 128);
+	// obtain(chunk, geom.clamped, P * 3, 128);
 	obtain(chunk, geom.internal_radii, P, 128);
 	obtain(chunk, geom.means2D, P, 128);
-	obtain(chunk, geom.cov3D, P * 6, 128);
-	obtain(chunk, geom.conic_opacity, P, 128);
+	// obtain(chunk, geom.cov3D, P * 6, 128);
+	// obtain(chunk, geom.conic_opacity, P, 128);
 	obtain(chunk, geom.rgb, P * 3, 128);
 	obtain(chunk, geom.tiles_touched, P, 128);
+	// (	void * 	d_temp_storage,
+	// 	size_t & 	temp_storage_bytes,
+	// 	InputIteratorT 	d_in,
+	// 	OutputIteratorT 	d_out,
+	// 	int 	num_items,
+	// 	cudaStream_t 	stream = 0,
+	// 	bool 	debug_synchronous = false 
+	// )	
+	// Compute prefix sum over full list of touched tile counts by Gaussians
+	// E.g., [2, 3, 0, 2, 1] -> [2, 5, 5, 7, 8]
 	cub::DeviceScan::InclusiveSum(nullptr, geom.scan_size, geom.tiles_touched, geom.tiles_touched, P);
 	obtain(chunk, geom.scanning_space, geom.scan_size, 128);
 	obtain(chunk, geom.point_offsets, P, 128);
