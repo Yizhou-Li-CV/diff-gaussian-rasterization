@@ -26,6 +26,7 @@ namespace CudaRasterizer
 	{
 		// calculates an aligned memory address
 		// adding alignment - 1 to the address, then rounding down to the nearest multiple of alignment
+		// The bitwise AND with ~(alignment - 1) zeroes out the lower bits to ensure proper alignment.
 		std::size_t offset = (reinterpret_cast<std::uintptr_t>(chunk) + alignment - 1) & ~(alignment - 1);
 		ptr = reinterpret_cast<T*>(offset);
 		chunk = reinterpret_cast<char*>(ptr + count);
