@@ -30,6 +30,22 @@ namespace cg = cooperative_groups;
 #include "forward.h"
 #include "backward.h"
 
+// Wrapper method to call auxiliary coarse frustum containment test.
+// Mark all Gaussians that pass it.
+// __global__ void checkFrustum(int P,
+// 	const float* orig_points,
+// 	const float* viewmatrix,
+// 	const float* projmatrix,
+// 	bool* present)
+// {
+// 	auto idx = cg::this_grid().thread_rank();
+// 	if (idx >= P)
+// 		return;
+
+// 	float3 p_view;
+// 	present[idx] = in_frustum(idx, orig_points, viewmatrix, projmatrix, false, p_view);
+// }
+
 // Helper function to find the next-highest bit of the MSB
 // on the CPU.
 uint32_t getHigherMsb(uint32_t n)
@@ -142,24 +158,26 @@ __global__ void identifyTileRanges(int L, uint64_t* point_list_keys, uint2* rang
 		ranges[currtile].y = L;
 }
 
-// Mark Gaussians as visible/invisible, based on view frustum testing
-void CudaRasterizer::Rasterizer::markVisible(
-	int P,
-	float* means3D,
-	float* viewmatrix,
-	float* projmatrix,
-	bool* present)
-{
-	checkFrustum << <(P + 255) / 256, 256 >> > (
-		P,
-		means3D,
-		viewmatrix, projmatrix,
-		present);
-}
+// Mark all Gaussians as visible/invisible, based on view frustum testing
+// void CudaRasterizer::Rasterizer::markVisible(
+// 	int P,
+// 	float* means3D,
+// 	float* viewmatrix,
+// 	float* projmatrix,
+// 	bool* present)
+// {
+// 	checkFrustum << <(P + 255) / 256, 256 >> > (
+// 		P,
+// 		means3D,
+// 		viewmatrix, projmatrix,
+// 		present);
+// }
 
 CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char*& chunk, size_t P)
 {
 	GeometryState geom;
+	// obtain(char*& chunk, T*& ptr, std::size_t count, std::size_t alignment)
+	// P means the max number of 3D GS
 	obtain(chunk, geom.depths, P, 128);
 	obtain(chunk, geom.clamped, P * 3, 128);
 	obtain(chunk, geom.internal_radii, P, 128);

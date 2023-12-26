@@ -19,8 +19,13 @@
 namespace CudaRasterizer
 {
 	template <typename T>
+	// *&: A reference to a pointer
+	// alignment: The alignment boundary. 
+	// The function will ensure the memory address is a multiple of this value.
 	static void obtain(char*& chunk, T*& ptr, std::size_t count, std::size_t alignment)
 	{
+		// calculates an aligned memory address
+		// adding alignment - 1 to the address, then rounding down to the nearest multiple of alignment
 		std::size_t offset = (reinterpret_cast<std::uintptr_t>(chunk) + alignment - 1) & ~(alignment - 1);
 		ptr = reinterpret_cast<T*>(offset);
 		chunk = reinterpret_cast<char*>(ptr + count);
