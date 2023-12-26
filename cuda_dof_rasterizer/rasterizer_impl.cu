@@ -83,10 +83,23 @@ __global__ void duplicateWithKeys(
 		{
 			for (int x = rect_min.x; x < rect_max.x; x++)
 			{
+				// the tile index
+				// grid.x means the number of blocks for a row
 				uint64_t key = y * grid.x + x;
 				key <<= 32;
+				// depth is original float
+				// (uint32_t*)&depths[idx]. 
+				// & here means get the address, or the pointer pointing at this depth value.
+				// Essentially, it's treating the bit pattern of the float value at 
+				// depths[idx] as if it were a 32-bit unsigned integer. 
+				// This doesn't change the bits themselves; 
+				// it just changes how the program interprets them.
+				// then, the * means access the value using pointer
+				// so here it gets the 32-bit unsigned integer value (originally interpreted as float)
 				key |= *((uint32_t*)&depths[idx]);
 				gaussian_keys_unsorted[off] = key;
+				// duplicate the GS indexes for each tile
+				// then sorted with tile id | depth
 				gaussian_values_unsorted[off] = idx;
 				off++;
 			}
