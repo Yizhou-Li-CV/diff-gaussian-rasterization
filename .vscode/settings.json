@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "cmath": "cpp"
+        "*.h": "cpp",
+        "cmath": "cpp",
+        "ios": "cpp"
     }
 }

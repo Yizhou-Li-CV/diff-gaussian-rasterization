@@ -67,8 +67,11 @@ namespace CudaRasterizer
 	template<typename T> 
 	size_t required(size_t P)
 	{
+		// start from nullptr
 		char* size = nullptr;
+		// push forward the size pointer
 		T::fromChunk(size, P);
+		// convert to size_t (max size of uint) to express size
 		return ((size_t)size) + 128;
 	}
 };

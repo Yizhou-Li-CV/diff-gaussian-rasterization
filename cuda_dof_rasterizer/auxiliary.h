@@ -38,6 +38,11 @@ __device__ const float SH_C3[] = {
 	-0.5900435899266435f
 };
 
+// Function to copy elements from one array to another
+void copyArray(const size_t size, const float* src, float* tgt) {
+    std::copy(src, src + size, tgt);
+}
+
 __forceinline__ __device__ float ndc2Pix(float v, int S)
 {
 	return ((v + 1.0) * S - 1.0) * 0.5;
