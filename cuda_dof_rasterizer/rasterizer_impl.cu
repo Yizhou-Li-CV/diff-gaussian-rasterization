@@ -309,10 +309,14 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.tiles_touched), debug)
 
 	// This might generate error: copyArray is designed for CPU array copy.
-	// but geomState.means2D is originally assigned in CPU memory?
 	// copyArray(P, orig_points, geomState.means2D)
 	// copyArray(P, depths, geomState.depths)
 	// copyArray(P * 3, rgbs, geomState.rgb)
+
+	// here xxBuffer assign space for means2D, depths, rgb
+	// xxBuffer use CUDA, so all on GPU space
+	// the orig_points may also be assigned on GPU as tensor.
+	// so use cudaMemcpy here.
 	CHECK_CUDA(cudaMemcpy(geomState.means2D, orig_points, P * sizeof(float2), cudaMemcpyDeviceToDevice), debug);
 	CHECK_CUDA(cudaMemcpy(geomState.depths, depths, P * sizeof(float), cudaMemcpyDeviceToDevice), debug);
 	CHECK_CUDA(cudaMemcpy(geomState.rgb, rgbs, P * 3 * sizeof(float), cudaMemcpyDeviceToDevice), debug);
