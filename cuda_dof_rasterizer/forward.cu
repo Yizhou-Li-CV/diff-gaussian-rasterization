@@ -23,6 +23,7 @@ __global__ void preprocessCUDA(
 	const int* radii, // Input. store radius of 2D kernels (CoC)
 	const dim3 grid, // Input. Grid size. Suppose res is 160x160, block size is 16x16, so the grid.x=grid.y=10. since grid idx start from 0, the right bottom grid idx is (grid.x-1, grid.y-1).
 	uint32_t* tiles_touched, // Output. 1-D array of the number of tiles that have been touched by 3D GS
+	bool prefiltered
 )
 {
 	// Get thread idx directly without manual calculation using cg lib
@@ -52,16 +53,19 @@ void FORWARD::preprocess(int P,
 	const int W, int H,
 	const int* radii,
 	const dim3 grid,
-	uint32_t* tiles_touched
+	uint32_t* tiles_touched,
+	bool prefiltered
 	)
 {
 	preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (
+		P,
 		orig_points,
 		W,
 		H,
 		radii,
 		grid,
-		tiles_touched
+		tiles_touched,
+		prefiltered
 	);
 }
 
@@ -82,7 +86,7 @@ renderCUDA(
 	float* __restrict__ final_T, // Output. final accumulated T for each pixel (thread)
 	uint32_t* __restrict__ n_contrib, // Output. basically just stores the number of 3D GS influencing cur pixel that not ignored during splatting
 	const float* __restrict__ bg_color, // Input. the RGB color of background. used when T is not small.
-	float* __restrict__ out_color // Output. store the RGB color (so 3 numbers) of current pixel
+	float* __restrict__ out_color, // Output. store the RGB color (so 3 numbers) of current pixel
 	// should this be __restrict__?
 	const int* radii // Input. the radius of each kernel (should be replicated during sorting)
 ){
@@ -265,7 +269,7 @@ void FORWARD::render(
 	float* __restrict__ final_T,
 	uint32_t* __restrict__ n_contrib,
 	const float* __restrict__ bg_color,
-	float* __restrict__ out_color
+	float* __restrict__ out_color,
 	const int* radii // Input. the radius of each kernel (should be replicated during sorting)
 )
 {
